@@ -1,0 +1,8 @@
+{
+  "name": "bird-eye",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun server.js"
+  }
+}

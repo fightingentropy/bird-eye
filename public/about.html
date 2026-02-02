@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About — Bird Feed Dashboard</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="top-nav">
+        <a href="/">Dashboard</a>
+        <a href="/about.html" class="active">About</a>
+      </nav>
+
+      <header class="hero about-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">About</p>
+          <h1>What this dashboard does</h1>
+          <p class="subhead">
+            This UI calls the bird CLI on your machine to fetch tweets from your account’s home feed and renders them
+            as cards in the dashboard.
+          </p>
+        </div>
+      </header>
+
+      <section class="panel about-panel">
+        <div class="panel-header">
+          <h2>How it works</h2>
+        </div>
+        <div class="about-grid">
+          <div class="about-card">
+            <h3>Data source</h3>
+            <p>
+              The server runs the bird CLI locally and calls
+              <code>bird list-timeline 1933193197817135501 -n 10 --json</code> (or your configured
+              command). This uses your existing X/Twitter session cookies to read that list timeline.
+            </p>
+          </div>
+          <div class="about-card">
+            <h3>Cache behavior</h3>
+            <p>
+              Results are cached per command. The dashboard only refreshes when you click Refresh or Apply. Every other
+              load returns the cached payload.
+            </p>
+          </div>
+          <div class="about-card">
+            <h3>Command config</h3>
+            <p>
+              You can set the command on the dashboard. For safety, the server allows only <code>bird home</code> and
+              <code>bird list-timeline</code> with <code>--following</code> (home only) and <code>-n/--count</code>.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Allowed commands & flags</h2>
+        </div>
+        <div class="about-list">
+          <div>
+            <h3>Command</h3>
+            <ul>
+              <li><code>bird list-timeline &lt;list&gt;</code> — list timeline (default)</li>
+              <li><code>bird home</code> — home timeline (For You)</li>
+              <li><code>bird home --following</code> — following feed</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Flags</h3>
+            <ul>
+              <li><code>-n &lt;count&gt;</code> or <code>--count &lt;count&gt;</code> — 1 to 50</li>
+              <li><code>--json</code> — optional; ignored if included</li>
+            </ul>
+          </div>
+        </div>
+        <div class="about-examples">
+          <h3>Examples</h3>
+          <pre><code>bird list-timeline 1933193197817135501 -n 10 --json
+bird home --following -n 20
+bird home -n 5</code></pre>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

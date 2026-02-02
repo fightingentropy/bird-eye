@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bird Feed Dashboard</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="hero-controls">
+          <button class="refresh-button" data-refresh type="button">Refresh feed</button>
+          <div class="search-field">
+            <label class="search-label sr-only" for="searchInput">Search</label>
+            <span class="search-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                <path
+                  d="M21 21l-4.35-4.35m1.6-4.65a7 7 0 11-14 0 7 7 0 0114 0z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <input
+              id="searchInput"
+              class="search-input"
+              data-search
+              type="search"
+              placeholder="Search..."
+              autocomplete="off"
+            />
+            <span class="search-shortcut" aria-hidden="true">⌘ K</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Latest tweets</h2>
+          <div class="panel-controls">
+            <label class="sort-label" for="sortSelect">Sort</label>
+            <select id="sortSelect" class="sort-select" data-sort>
+              <option value="latest">Latest</option>
+              <option value="likes">Likes</option>
+            </select>
+            <label class="count-label" for="countSelect">Count</label>
+            <select id="countSelect" class="sort-select" data-count>
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+        <div class="error" data-error hidden></div>
+        <div class="tweets" data-tweets></div>
+      </section>
+    </main>
+
+    <aside class="price-rail" aria-label="Live prices">
+      <div class="price-rail-updated" data-price-updated>Updating...</div>
+      <div class="price-list">
+        <div class="price-card" data-coin-card="BTC">
+          <div class="price-coin">BTC</div>
+          <div class="price-row">
+            <div class="price-value" data-price="BTC">$--</div>
+            <div class="price-change" data-change="BTC">--</div>
+          </div>
+        </div>
+        <div class="price-card" data-coin-card="ETH">
+          <div class="price-coin">ETH</div>
+          <div class="price-row">
+            <div class="price-value" data-price="ETH">$--</div>
+            <div class="price-change" data-change="ETH">--</div>
+          </div>
+        </div>
+        <div class="price-card" data-coin-card="HYPE">
+          <div class="price-coin">HYPE</div>
+          <div class="price-row">
+            <div class="price-value" data-price="HYPE">$--</div>
+            <div class="price-change" data-change="HYPE">--</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <script src="app.js"></script>
+  </body>
+</html>
