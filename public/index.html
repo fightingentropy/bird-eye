@@ -69,6 +69,27 @@
       </section>
     </main>
 
+    <aside class="summary-rail" aria-label="Codex topic summary">
+      <div class="summary-header">
+        <div>
+          <div class="summary-kicker">Codex brief</div>
+          <h3 class="summary-title" data-summary-title>Topic Summary</h3>
+        </div>
+        <button class="summary-button" type="button" data-summary-refresh>
+          Summarize
+        </button>
+      </div>
+      <div class="summary-meta">
+        <span data-summary-updated>Waiting for summary</span>
+        <span class="summary-model">gpt-5.2-codex</span>
+      </div>
+      <p class="summary-lead" data-summary-lead>
+        Fetch the 50 latest tweets and group them by topic.
+      </p>
+      <div class="summary-list" data-summary-list></div>
+      <div class="summary-status" data-summary-status></div>
+    </aside>
+
     <aside class="price-rail" aria-label="Live prices">
       <div class="price-rail-updated" data-price-updated>Updating...</div>
       <div class="price-list">

@@ -11,6 +11,12 @@ const sortSelect = document.querySelector('[data-sort]');
 const countSelect = document.querySelector('[data-count]');
 const searchInput = document.querySelector('[data-search]');
 const priceUpdatedEl = document.querySelector('[data-price-updated]');
+const summaryButton = document.querySelector('[data-summary-refresh]');
+const summaryUpdatedEl = document.querySelector('[data-summary-updated]');
+const summaryListEl = document.querySelector('[data-summary-list]');
+const summaryLeadEl = document.querySelector('[data-summary-lead]');
+const summaryStatusEl = document.querySelector('[data-summary-status]');
+const summaryTitleEl = document.querySelector('[data-summary-title]');
 const priceEls = {
   BTC: document.querySelector('[data-price="BTC"]'),
   ETH: document.querySelector('[data-price="ETH"]'),
@@ -27,9 +33,11 @@ const STORAGE_KEY = 'bird-dashboard-command';
 const SORT_KEY = 'bird-dashboard-sort';
 const COUNT_KEY = 'bird-dashboard-count';
 const SEARCH_KEY = 'bird-dashboard-search';
+const SUMMARY_CACHE_KEY = 'bird-dashboard-summary-cache';
 const DEFAULT_COUNT = 50;
 let activeCommand = DEFAULT_COMMAND;
 let currentTweets = [];
+let summaryInFlight = false;
 const LEGACY_COMMANDS = [
   'bird home --following -n 10 --json',
   'bird home -n 10 --json',
@@ -147,6 +155,89 @@ function setPriceUpdated(message) {
   priceUpdatedEl.textContent = message;
 }
 
+function setSummaryUpdated(message) {
+  if (!summaryUpdatedEl) {
+    return;
+  }
+
+  summaryUpdatedEl.textContent = message || '';
+}
+
+function setSummaryStatus(message) {
+  if (!summaryStatusEl) {
+    return;
+  }
+
+  summaryStatusEl.textContent = message || '';
+}
+
+function setSummaryLoading(isLoading) {
+  if (!summaryButton) {
+    return;
+  }
+
+  summaryButton.disabled = isLoading;
+  summaryButton.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+}
+
+function clearSummaryList() {
+  if (!summaryListEl) {
+    return;
+  }
+
+  summaryListEl.innerHTML = '';
+}
+
+function renderSummary(summary) {
+  if (!summaryListEl) {
+    return;
+  }
+
+  clearSummaryList();
+
+  if (summaryTitleEl && summary && summary.title) {
+    summaryTitleEl.textContent = summary.title;
+  }
+
+  if (summaryLeadEl) {
+    summaryLeadEl.textContent = '';
+  }
+
+  const topics = summary && Array.isArray(summary.topics) ? summary.topics : [];
+  if (topics.length === 0) {
+    return;
+  }
+
+  topics.forEach((topic) => {
+    const item = document.createElement('div');
+    item.className = 'summary-item';
+
+    const header = document.createElement('div');
+    header.className = 'summary-topic';
+
+    const name = document.createElement('span');
+    name.textContent = topic && topic.topic ? topic.topic : 'Topic';
+
+    const count = document.createElement('span');
+    count.className = 'summary-count';
+    count.textContent =
+      topic && typeof topic.count === 'number' ? `${topic.count} tweets` : '--';
+
+    header.appendChild(name);
+    header.appendChild(count);
+
+    const text = document.createElement('p');
+    text.className = 'summary-text';
+    text.textContent =
+      topic && topic.summary ? topic.summary : 'Summary unavailable for this topic.';
+
+    item.appendChild(header);
+    item.appendChild(text);
+
+    summaryListEl.appendChild(item);
+  });
+}
+
 function updatePriceLabel(symbol, value) {
   const el = priceEls[symbol];
   if (!el) {
@@ -230,6 +321,115 @@ function startBinancePriceStream() {
   connect();
 }
 
+function hashString(value) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function buildSummaryKey(tweets) {
+  const basis = tweets
+    .map((tweet, index) => {
+      const id = tweet && tweet.id ? tweet.id : String(index);
+      const createdAt = tweet && tweet.createdAt ? tweet.createdAt : '';
+      const text = tweet && tweet.text ? tweet.text.slice(0, 32) : '';
+      return `${id}:${createdAt}:${text}`;
+    })
+    .join('|');
+  return `v1:${hashString(basis)}`;
+}
+
+function loadSummaryCache() {
+  try {
+    const raw = localStorage.getItem(SUMMARY_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveSummaryCache(nextCache) {
+  try {
+    localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(nextCache));
+  } catch (error) {
+    // ignore storage errors
+  }
+}
+
+function storeSummaryInCache(key, summary) {
+  if (!key || !summary) {
+    return;
+  }
+  const cache = loadSummaryCache();
+  cache[key] = {
+    summary,
+    storedAt: Date.now()
+  };
+  saveSummaryCache(cache);
+}
+
+function getSummaryFromCache(key) {
+  if (!key) {
+    return null;
+  }
+  const cache = loadSummaryCache();
+  return cache && cache[key] ? cache[key].summary : null;
+}
+
+async function getSummaryTweets() {
+  if (!Array.isArray(currentTweets) || currentTweets.length === 0) {
+    throw new Error('No tweets are loaded yet.');
+  }
+  if (currentTweets.length < 50) {
+    throw new Error('Load 50 tweets in the feed before summarizing.');
+  }
+  return currentTweets.slice(0, 50);
+}
+
+async function fetchSummary({ silent = false } = {}) {
+  if (summaryInFlight) {
+    return;
+  }
+
+  summaryInFlight = true;
+  if (!silent) {
+    setSummaryStatus('Summarizing 50 latest tweets...');
+  }
+  setSummaryLoading(true);
+
+  try {
+    const tweets = await getSummaryTweets();
+    const key = buildSummaryKey(tweets);
+    const response = await fetch('/api/tweet-summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tweets, key })
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload && payload.error ? payload.error : 'Summary request failed.');
+    }
+
+    renderSummary(payload.summary);
+    storeSummaryInCache(key, payload.summary);
+    const fetchedAt = payload.fetchedAt ? new Date(payload.fetchedAt) : new Date();
+    setSummaryUpdated(`Updated ${fetchedAt.toLocaleTimeString()}`);
+    setSummaryStatus(`Summarized ${payload.count || tweets.length || 0} tweets.`);
+  } catch (error) {
+    clearSummaryList();
+    if (summaryLeadEl) {
+      summaryLeadEl.textContent = 'Summary failed. Try again.';
+    }
+    setSummaryStatus(error && error.message ? error.message : 'Summary failed.');
+  } finally {
+    setSummaryLoading(false);
+    summaryInFlight = false;
+  }
+}
 
 function clearTweets() {
   if (!tweetsEl) {
@@ -494,6 +694,15 @@ async function fetchTweets(options = {}) {
 
     currentTweets = payload.tweets || [];
     renderWithSort();
+    if (Array.isArray(currentTweets) && currentTweets.length >= 50) {
+      const summaryKey = buildSummaryKey(currentTweets.slice(0, 50));
+      const cachedSummary = getSummaryFromCache(summaryKey);
+      if (cachedSummary) {
+        renderSummary(cachedSummary);
+        setSummaryUpdated('Cached summary');
+        setSummaryStatus('Loaded from cache.');
+      }
+    }
 
     const fetchedAt = payload.meta && payload.meta.fetchedAt ? new Date(payload.meta.fetchedAt) : new Date();
     const count =
@@ -579,6 +788,10 @@ if (searchInput) {
     localStorage.setItem(SEARCH_KEY, searchInput.value);
     renderWithSort();
   });
+}
+
+if (summaryButton) {
+  summaryButton.addEventListener('click', () => fetchSummary());
 }
 
 const storedCommand = localStorage.getItem(STORAGE_KEY);

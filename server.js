@@ -1,18 +1,24 @@
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const BIRD_COMMAND = process.env.BIRD_COMMAND || 'bird';
 const TWEET_COUNT = 10;
 const REQUEST_TIMEOUT_MS = 20000;
+const CODEX_TIMEOUT_MS = 20000;
 const DEFAULT_LIST = '1933193197817135501';
 const COMMAND_DISPLAY = `bird list-timeline ${DEFAULT_LIST} -n ${TWEET_COUNT} --json`;
 const cacheByCommand = new Map();
+const summaryCacheByKey = new Map();
 const PRICE_CACHE_MS = 10000;
 const PRICE_TIMEOUT_MS = 8000;
 const PRICE_SYMBOLS = ['BTC', 'ETH', 'HYPE'];
 let lastPricePayload = null;
 let lastPriceFetchedAt = 0;
+const DEFAULT_CODEX_MODEL = 'gpt-5.2-codex';
+const DEFAULT_CODEX_URL = 'https://chatgpt.com/backend-api/codex/responses';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -225,6 +231,384 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
+function readCodexToken() {
+  const authFile =
+    process.env.CODEX_AUTH_FILE || path.join(os.homedir(), '.codex', 'auth.json');
+  let raw;
+  try {
+    raw = fs.readFileSync(authFile, 'utf8');
+  } catch (error) {
+    throw new Error(
+      `Codex auth file not found. Expected at ${authFile}. Run "codex login" first.`
+    );
+  }
+  const auth = JSON.parse(raw);
+  const token = auth.access_token || (auth.tokens && auth.tokens.access_token);
+  if (!token) {
+    throw new Error('Codex auth file missing access_token.');
+  }
+  return token;
+}
+
+function buildSummaryPrompt(tweets) {
+  const list = tweets
+    .map((tweet, index) => {
+      const author =
+        tweet && tweet.author && tweet.author.username ? `@${tweet.author.username}` : 'unknown';
+      const text = tweet && tweet.text ? tweet.text.replace(/\s+/g, ' ').trim() : '';
+      return `${index + 1}. (${author}) ${text}`;
+    })
+    .join('\n');
+
+  return `
+Summarize the 50 tweets into topical insights.
+Output ONLY plain text in this exact format:
+
+Title: <short title>
+Overall: <1-2 sentence summary>
+Topics:
+- <topic> | <count> | <short summary (<=18 words)>
+- <topic> | <count> | <short summary (<=18 words)>
+- <topic> | <count> | <short summary (<=18 words)>
+- <topic> | <count> | <short summary (<=18 words)>
+
+Use 4-7 topics. Counts should add up to 50. Be concise and specific.
+
+Tweets:
+${list}
+`.trim();
+}
+
+function extractCodexText(payload) {
+  if (!payload) {
+    return '';
+  }
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  if (typeof payload.output_text === 'string') {
+    return payload.output_text;
+  }
+  if (Array.isArray(payload.output)) {
+    const parts = [];
+    payload.output.forEach((item) => {
+      if (item && item.type === 'message' && Array.isArray(item.content)) {
+        item.content.forEach((contentItem) => {
+          if (!contentItem) {
+            return;
+          }
+          if (contentItem.type === 'output_text' || contentItem.type === 'text') {
+            if (typeof contentItem.text === 'string') {
+              parts.push(contentItem.text);
+            }
+          }
+        });
+      }
+    });
+    if (parts.length > 0) {
+      return parts.join('\n');
+    }
+  }
+  if (
+    payload.choices &&
+    payload.choices[0] &&
+    payload.choices[0].message &&
+    typeof payload.choices[0].message.content === 'string'
+  ) {
+    return payload.choices[0].message.content;
+  }
+  return '';
+}
+
+function parseSummaryFromText(text) {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+
+  const trimmed = text.trim();
+  let jsonText = trimmed;
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    jsonText = trimmed.slice(firstBrace, lastBrace + 1);
+  }
+
+  const tryParse = (value) => {
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return null;
+    }
+  };
+
+  let parsed = tryParse(jsonText);
+  if (!parsed) {
+    const repaired = jsonText.replace(/,\s*([}\]])/g, '$1');
+    parsed = tryParse(repaired);
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    return parsed;
+  }
+
+  const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const summary = {
+    title: 'Topic Summary',
+    overallSummary: '',
+    topics: []
+  };
+
+  lines.forEach((line) => {
+    if (line.toLowerCase().startsWith('title:')) {
+      summary.title = line.slice(6).trim() || summary.title;
+      return;
+    }
+    if (line.toLowerCase().startsWith('overall:')) {
+      summary.overallSummary = line.slice(8).trim();
+      return;
+    }
+    if (line.startsWith('- ')) {
+      const content = line.slice(2).trim();
+      const parts = content.split('|').map((part) => part.trim());
+      if (parts.length >= 3) {
+        const countValue = Number.parseInt(parts[1], 10);
+        summary.topics.push({
+          topic: parts[0] || 'Topic',
+          count: Number.isNaN(countValue) ? 0 : countValue,
+          summary: parts.slice(2).join(' | ') || ''
+        });
+      }
+    }
+  });
+
+  if (!summary.overallSummary && lines.length) {
+    summary.overallSummary = lines[0];
+  }
+
+  return summary.topics.length || summary.overallSummary ? summary : null;
+}
+
+function extractJsonObjectText(text) {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+
+  const start = text.indexOf('{');
+  if (start === -1) {
+    return null;
+  }
+
+  let braceCount = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      if (inString) {
+        escaped = true;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (ch === '{') {
+      braceCount += 1;
+    } else if (ch === '}') {
+      braceCount -= 1;
+      if (braceCount === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractCodexTextFromStream(raw) {
+  if (!raw || typeof raw !== 'string') {
+    return '';
+  }
+
+  let output = '';
+  let index = 0;
+  while (index < raw.length) {
+    const dataIndex = raw.indexOf('data:', index);
+    if (dataIndex === -1) {
+      break;
+    }
+    let cursor = dataIndex + 5;
+    while (cursor < raw.length && /\s/.test(raw[cursor])) {
+      cursor += 1;
+    }
+    if (raw[cursor] !== '{') {
+      index = cursor + 1;
+      continue;
+    }
+
+    let braceCount = 0;
+    let inString = false;
+    let escaped = false;
+    let end = cursor;
+    for (; end < raw.length; end += 1) {
+      const ch = raw[end];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\\\') {
+        if (inString) {
+          escaped = true;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) {
+        continue;
+      }
+      if (ch === '{') {
+        braceCount += 1;
+      } else if (ch === '}') {
+        braceCount -= 1;
+        if (braceCount === 0) {
+          end += 1;
+          break;
+        }
+      }
+    }
+
+    const jsonText = raw.slice(cursor, end).trim();
+    if (jsonText) {
+      try {
+        const payload = JSON.parse(jsonText);
+        const delta =
+          payload &&
+          payload.type === 'response.output_text.delta' &&
+          typeof payload.delta === 'string'
+            ? payload.delta
+            : '';
+        if (delta) {
+          output += delta;
+        }
+      } catch (error) {
+        // ignore malformed stream chunks
+      }
+    }
+
+    index = end;
+  }
+
+  return output.trim();
+}
+
+async function requestCodexText(prompt) {
+  const token = readCodexToken();
+  const url = process.env.CODEX_URL || DEFAULT_CODEX_URL;
+  const model = process.env.CODEX_MODEL || DEFAULT_CODEX_MODEL;
+
+  const response = await withTimeout(
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        model,
+        instructions: '',
+        stream: true,
+        store: false,
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: prompt }]
+          }
+        ]
+      })
+    }),
+    CODEX_TIMEOUT_MS,
+    'Codex request timed out.'
+  );
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Codex request failed (${response.status}). ${text || response.statusText}`);
+  }
+
+  const looksLikeStream = /\bevent:\s*\w+|\bdata:\s*\{/.test(text);
+  let parsedPayload;
+  if (!looksLikeStream) {
+    try {
+      parsedPayload = JSON.parse(text);
+    } catch (error) {
+      parsedPayload = text;
+    }
+  }
+
+  const outputText = looksLikeStream
+    ? extractCodexTextFromStream(text)
+    : extractCodexText(parsedPayload);
+
+  if (!outputText) {
+    throw new Error('Codex response contained no text.');
+  }
+
+  return outputText;
+}
+
+async function requestCodexSummary(tweets) {
+  if (!Array.isArray(tweets) || tweets.length === 0) {
+    throw new Error('No tweets available to summarize.');
+  }
+
+  const prompt = buildSummaryPrompt(tweets.slice(0, 50));
+  const outputText = await requestCodexText(prompt);
+
+  let summary = parseSummaryFromText(outputText);
+  if (!summary) {
+    const extracted = extractJsonObjectText(outputText);
+    summary = extracted ? parseSummaryFromText(extracted) : null;
+  }
+  if (!summary) {
+    const repairPrompt = `
+Reformat the text below into this exact format (plain text only):
+
+Title: <short title>
+Overall: <1-2 sentence summary>
+Topics:
+- <topic> | <count> | <short summary (<=18 words)>
+- <topic> | <count> | <short summary (<=18 words)>
+- <topic> | <count> | <short summary (<=18 words)>
+- <topic> | <count> | <short summary (<=18 words)>
+
+Use 4-7 topics. Counts should add up to 50. No extra lines.
+
+Text to fix:
+${outputText}
+`.trim();
+    const repairedText = await requestCodexText(repairPrompt);
+    summary = parseSummaryFromText(repairedText);
+  }
+  if (!summary) {
+    throw new Error('Codex response was not valid JSON.');
+  }
+
+  return summary;
+}
+
 async function fetchHyperliquidPrices() {
   const now = Date.now();
   if (lastPricePayload && now - lastPriceFetchedAt < PRICE_CACHE_MS) {
@@ -304,6 +688,58 @@ Bun.serve({
       } catch (error) {
         return jsonResponse(
           { error: error && error.message ? error.message : 'Failed to fetch tweets.' },
+          500
+        );
+      }
+    }
+
+    if (url.pathname === '/api/tweet-summary') {
+      if (request.method !== 'POST') {
+        return jsonResponse({ error: 'Method not allowed.' }, 405);
+      }
+
+      try {
+        let body = {};
+        try {
+          body = await request.json();
+        } catch (error) {
+          body = {};
+        }
+
+        const cacheKey = typeof body.key === 'string' && body.key.trim() ? body.key.trim() : null;
+        let tweets = Array.isArray(body.tweets) ? body.tweets : null;
+
+        if (cacheKey && summaryCacheByKey.has(cacheKey)) {
+          return jsonResponse(summaryCacheByKey.get(cacheKey));
+        }
+
+        if (!tweets || tweets.length === 0) {
+          const raw = await fetchTweets([
+            'list-timeline',
+            DEFAULT_LIST,
+            '-n',
+            '50',
+            '--json'
+          ]);
+          const payload = buildPayload(raw, `bird list-timeline ${DEFAULT_LIST} -n 50 --json`, 50);
+          tweets = payload.tweets;
+        }
+
+        const summary = await requestCodexSummary(tweets);
+        const payload = {
+          summary,
+          fetchedAt: new Date().toISOString(),
+          count: Array.isArray(tweets) ? tweets.length : 0
+        };
+        if (cacheKey) {
+          summaryCacheByKey.set(cacheKey, payload);
+        }
+        return jsonResponse(payload);
+      } catch (error) {
+        return jsonResponse(
+          {
+            error: error && error.message ? error.message : 'Failed to summarize tweets.'
+          },
           500
         );
       }

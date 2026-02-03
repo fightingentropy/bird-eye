@@ -441,9 +441,121 @@ h1 {
   outline-offset: 2px;
 }
 
+.summary-rail {
+  position: fixed;
+  top: clamp(18px, 3vw, 36px);
+  left: clamp(16px, 4vw, 48px);
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 12px;
+  z-index: 3;
+}
+
+.summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.summary-title {
+  display: none;
+}
+
+.summary-button {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.summary-button:hover {
+  opacity: 0.8;
+}
+
+.summary-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.summary-meta {
+  display: none;
+}
+
+.summary-lead {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.summary-list {
+  display: grid;
+  gap: 10px;
+  max-height: 70vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.summary-item {
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.summary-topic {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.summary-count {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.summary-text {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.summary-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+  min-height: 1em;
+}
+
 .price-rail {
   position: fixed;
-  top: clamp(96px, 12vh, 150px);
+  top: clamp(360px, 40vh, 380px);
   right: clamp(16px, 4vw, 48px);
   width: 220px;
   background: var(--surface);
@@ -698,6 +810,12 @@ h1 {
 }
 
 @media (max-width: 1024px) {
+  .summary-rail {
+    position: static;
+    width: 100%;
+    margin: 0 auto 16px;
+  }
+
   .price-rail {
     position: static;
     width: 100%;
