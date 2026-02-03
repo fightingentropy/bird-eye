@@ -522,6 +522,13 @@ h1 {
   padding: 10px 12px;
   display: grid;
   gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.summary-item.is-active {
+  border-color: #f5f5f5;
+  box-shadow: 0 0 0 1px rgba(245, 245, 245, 0.35);
 }
 
 .summary-topic {

@@ -38,6 +38,7 @@ const DEFAULT_COUNT = 50;
 let activeCommand = DEFAULT_COMMAND;
 let currentTweets = [];
 let summaryInFlight = false;
+let activeSummaryFilter = null;
 const LEGACY_COMMANDS = [
   'bird home --following -n 10 --json',
   'bird home -n 10 --json',
@@ -208,9 +209,12 @@ function renderSummary(summary) {
     return;
   }
 
-  topics.forEach((topic) => {
+  activeSummaryFilter = null;
+
+  topics.forEach((topic, index) => {
     const item = document.createElement('div');
     item.className = 'summary-item';
+    item.dataset.summaryIndex = String(index);
 
     const header = document.createElement('div');
     header.className = 'summary-topic';
@@ -234,8 +238,24 @@ function renderSummary(summary) {
     item.appendChild(header);
     item.appendChild(text);
 
+    item.addEventListener('click', () => {
+      const isActive = activeSummaryFilter && activeSummaryFilter.index === index;
+      activeSummaryFilter = isActive
+        ? null
+        : {
+            index,
+            topic: topic && topic.topic ? topic.topic : '',
+            summary: topic && topic.summary ? topic.summary : '',
+            indices: Array.isArray(topic && topic.indices) ? topic.indices : []
+          };
+      updateSummarySelection();
+      renderWithSort();
+    });
+
     summaryListEl.appendChild(item);
   });
+
+  updateSummarySelection();
 }
 
 function updatePriceLabel(symbol, value) {
@@ -319,6 +339,49 @@ function startBinancePriceStream() {
   };
 
   connect();
+}
+
+function updateSummarySelection() {
+  if (!summaryListEl) {
+    return;
+  }
+
+  Array.from(summaryListEl.children).forEach((child) => {
+    if (!child || !child.classList) {
+      return;
+    }
+    const index = Number.parseInt(child.dataset.summaryIndex, 10);
+    const isActive = activeSummaryFilter && activeSummaryFilter.index === index;
+    child.classList.toggle('is-active', Boolean(isActive));
+  });
+}
+
+function buildTopicKeywords(filter) {
+  if (!filter) {
+    return [];
+  }
+  const combined = `${filter.topic || ''} ${filter.summary || ''}`.toLowerCase();
+  return combined
+    .split(/[^a-z0-9]+/g)
+    .map((word) => word.trim())
+    .filter((word) => word.length > 2);
+}
+
+function filterTweetsBySummary(tweets) {
+  if (!activeSummaryFilter) {
+    return tweets;
+  }
+  if (Array.isArray(activeSummaryFilter.indices) && activeSummaryFilter.indices.length > 0) {
+    return tweets.filter((_, index) => activeSummaryFilter.indices.includes(index));
+  }
+  const keywords = buildTopicKeywords(activeSummaryFilter);
+  if (keywords.length === 0) {
+    return tweets;
+  }
+  return tweets.filter((tweet) => {
+    const text = tweet && tweet.text ? tweet.text.toLowerCase() : '';
+    return keywords.some((keyword) => text.includes(keyword));
+  });
 }
 
 function hashString(value) {
@@ -653,8 +716,13 @@ function filterTweets(tweets, term) {
 
 function renderWithSort() {
   if (!sortSelect || sortSelect.value === 'latest') {
-    const filtered = filterTweets(currentTweets, getSearchTerm());
-    const emptyMessage = getSearchTerm() ? 'No tweets match your search.' : undefined;
+    const summaryFiltered = filterTweetsBySummary(currentTweets);
+    const filtered = filterTweets(summaryFiltered, getSearchTerm());
+    const emptyMessage = activeSummaryFilter
+      ? 'No tweets match this topic.'
+      : getSearchTerm()
+      ? 'No tweets match your search.'
+      : undefined;
     renderTweets(filtered, emptyMessage);
     return;
   }
@@ -664,8 +732,13 @@ function renderWithSort() {
     const bLikes = b && b.metrics && typeof b.metrics.likeCount === 'number' ? b.metrics.likeCount : 0;
     return bLikes - aLikes;
   });
-  const filtered = filterTweets(sorted, getSearchTerm());
-  const emptyMessage = getSearchTerm() ? 'No tweets match your search.' : undefined;
+  const summaryFiltered = filterTweetsBySummary(sorted);
+  const filtered = filterTweets(summaryFiltered, getSearchTerm());
+  const emptyMessage = activeSummaryFilter
+    ? 'No tweets match this topic.'
+    : getSearchTerm()
+    ? 'No tweets match your search.'
+    : undefined;
   renderTweets(filtered, emptyMessage);
 }
 

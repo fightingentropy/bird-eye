@@ -267,12 +267,12 @@ Output ONLY plain text in this exact format:
 Title: <short title>
 Overall: <1-2 sentence summary>
 Topics:
-- <topic> | <count> | <short summary (<=18 words)>
+- <topic> | <count> | <short summary (<=18 words)> | idx: <comma-separated tweet numbers>
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 
-Use 4-7 topics. Counts should add up to 50. Be concise and specific.
+Use 4-7 topics. Counts should add up to 50. Use 1-based tweet numbers. Be concise and specific.
 
 Tweets:
 ${list}
@@ -372,10 +372,23 @@ function parseSummaryFromText(text) {
       const parts = content.split('|').map((part) => part.trim());
       if (parts.length >= 3) {
         const countValue = Number.parseInt(parts[1], 10);
+        let summaryText = parts.slice(2).join(' | ') || '';
+        let indices = [];
+        const idxMatch = summaryText.match(/idx:\s*([0-9,\s]+)/i);
+        if (idxMatch) {
+          indices = idxMatch[1]
+            .split(',')
+            .map((value) => Number.parseInt(value.trim(), 10))
+            .filter((value) => Number.isInteger(value) && value > 0)
+            .map((value) => value - 1);
+          summaryText = summaryText.replace(/idx:\s*[0-9,\s]+/i, '').trim();
+          summaryText = summaryText.replace(/\|\s*$/g, '').trim();
+        }
         summary.topics.push({
           topic: parts[0] || 'Topic',
           count: Number.isNaN(countValue) ? 0 : countValue,
-          summary: parts.slice(2).join(' | ') || ''
+          summary: summaryText,
+          indices
         });
       }
     }
