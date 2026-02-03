@@ -5,7 +5,7 @@ const os = require('os');
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const BIRD_COMMAND = process.env.BIRD_COMMAND || 'bird';
-const TWEET_COUNT = 10;
+const TWEET_COUNT = 100;
 const REQUEST_TIMEOUT_MS = 20000;
 const CODEX_TIMEOUT_MS = 20000;
 const DEFAULT_LIST = '1933193197817135501';
@@ -116,8 +116,8 @@ function parseCommand(rawCommand) {
     if (part === '-n' || part === '--count') {
       const value = parts[i + 1];
       const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 50) {
-        return { error: 'Count must be an integer between 1 and 50.' };
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 100) {
+        return { error: 'Count must be an integer between 1 and 100.' };
       }
       count = parsed;
       i += 1;
@@ -261,7 +261,7 @@ function buildSummaryPrompt(tweets) {
     .join('\n');
 
   return `
-Summarize the 50 tweets into topical insights.
+Summarize the 100 tweets into topical insights.
 Output ONLY plain text in this exact format:
 
 Title: <short title>
@@ -272,7 +272,7 @@ Topics:
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 
-Use 4-7 topics. Counts should add up to 50. Use 1-based tweet numbers. Be concise and specific.
+Use 4-7 topics. Counts should add up to 100. Use 1-based tweet numbers. Be concise and specific.
 
 Tweets:
 ${list}
@@ -587,7 +587,7 @@ async function requestCodexSummary(tweets) {
     throw new Error('No tweets available to summarize.');
   }
 
-  const prompt = buildSummaryPrompt(tweets.slice(0, 50));
+  const prompt = buildSummaryPrompt(tweets.slice(0, 100));
   const outputText = await requestCodexText(prompt);
 
   let summary = parseSummaryFromText(outputText);
@@ -607,7 +607,7 @@ Topics:
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 
-Use 4-7 topics. Counts should add up to 50. No extra lines.
+Use 4-7 topics. Counts should add up to 100. No extra lines.
 
 Text to fix:
 ${outputText}
@@ -731,10 +731,14 @@ Bun.serve({
             'list-timeline',
             DEFAULT_LIST,
             '-n',
-            '50',
+            '100',
             '--json'
           ]);
-          const payload = buildPayload(raw, `bird list-timeline ${DEFAULT_LIST} -n 50 --json`, 50);
+          const payload = buildPayload(
+            raw,
+            `bird list-timeline ${DEFAULT_LIST} -n 100 --json`,
+            100
+          );
           tweets = payload.tweets;
         }
 

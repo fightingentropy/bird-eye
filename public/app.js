@@ -28,13 +28,13 @@ const priceChangeEls = {
   HYPE: document.querySelector('[data-change="HYPE"]')
 };
 
-const DEFAULT_COMMAND = 'bird list-timeline 1933193197817135501 -n 50 --json';
+const DEFAULT_COMMAND = 'bird list-timeline 1933193197817135501 -n 100 --json';
 const STORAGE_KEY = 'bird-dashboard-command';
 const SORT_KEY = 'bird-dashboard-sort';
 const COUNT_KEY = 'bird-dashboard-count';
 const SEARCH_KEY = 'bird-dashboard-search';
 const SUMMARY_CACHE_KEY = 'bird-dashboard-summary-cache';
-const DEFAULT_COUNT = 50;
+const DEFAULT_COUNT = 100;
 let activeCommand = DEFAULT_COMMAND;
 let currentTweets = [];
 let summaryInFlight = false;
@@ -446,10 +446,10 @@ async function getSummaryTweets() {
   if (!Array.isArray(currentTweets) || currentTweets.length === 0) {
     throw new Error('No tweets are loaded yet.');
   }
-  if (currentTweets.length < 50) {
-    throw new Error('Load 50 tweets in the feed before summarizing.');
+  if (currentTweets.length < 100) {
+    throw new Error('Load 100 tweets in the feed before summarizing.');
   }
-  return currentTweets.slice(0, 50);
+  return currentTweets.slice(0, 100);
 }
 
 async function fetchSummary({ silent = false } = {}) {
@@ -459,7 +459,7 @@ async function fetchSummary({ silent = false } = {}) {
 
   summaryInFlight = true;
   if (!silent) {
-    setSummaryStatus('Summarizing 50 latest tweets...');
+    setSummaryStatus('Summarizing 100 latest tweets...');
   }
   setSummaryLoading(true);
 
@@ -645,7 +645,7 @@ function setCountOnCommand(command, count) {
     return command;
   }
 
-  const nextCount = Math.max(1, Math.min(50, count));
+  const nextCount = Math.max(1, Math.min(100, count));
   if (/(?:-n|--count)\s+\d+/.test(command)) {
     return command.replace(/(?:-n|--count)\s+\d+/, `-n ${nextCount}`);
   }
@@ -767,8 +767,8 @@ async function fetchTweets(options = {}) {
 
     currentTweets = payload.tweets || [];
     renderWithSort();
-    if (Array.isArray(currentTweets) && currentTweets.length >= 50) {
-      const summaryKey = buildSummaryKey(currentTweets.slice(0, 50));
+    if (Array.isArray(currentTweets) && currentTweets.length >= 100) {
+      const summaryKey = buildSummaryKey(currentTweets.slice(0, 100));
       const cachedSummary = getSummaryFromCache(summaryKey);
       if (cachedSummary) {
         renderSummary(cachedSummary);
