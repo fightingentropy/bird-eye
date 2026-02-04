@@ -17,6 +17,10 @@ const summaryListEl = document.querySelector('[data-summary-list]');
 const summaryLeadEl = document.querySelector('[data-summary-lead]');
 const summaryStatusEl = document.querySelector('[data-summary-status]');
 const summaryTitleEl = document.querySelector('[data-summary-title]');
+const chatInputEl = document.querySelector('[data-chat-input]');
+const chatAskButton = document.querySelector('[data-chat-ask]');
+const chatAnswerEl = document.querySelector('[data-chat-answer]');
+const chatStatusEl = document.querySelector('[data-chat-status]');
 const priceEls = {
   BTC: document.querySelector('[data-price="BTC"]'),
   ETH: document.querySelector('[data-price="ETH"]'),
@@ -39,6 +43,7 @@ let activeCommand = DEFAULT_COMMAND;
 let currentTweets = [];
 let summaryInFlight = false;
 let activeSummaryFilter = null;
+let chatInFlight = false;
 const LEGACY_COMMANDS = [
   'bird home --following -n 10 --json',
   'bird home -n 10 --json',
@@ -170,6 +175,28 @@ function setSummaryStatus(message) {
   }
 
   summaryStatusEl.textContent = message || '';
+}
+
+function setChatStatus(message) {
+  if (!chatStatusEl) {
+    return;
+  }
+  chatStatusEl.textContent = message || '';
+}
+
+function setChatLoading(isLoading) {
+  if (!chatAskButton) {
+    return;
+  }
+  chatAskButton.disabled = isLoading;
+  chatAskButton.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+}
+
+function setChatAnswer(message) {
+  if (!chatAnswerEl) {
+    return;
+  }
+  chatAnswerEl.textContent = message || '';
 }
 
 function setSummaryLoading(isLoading) {
@@ -452,6 +479,16 @@ async function getSummaryTweets() {
   return currentTweets.slice(0, 100);
 }
 
+async function getChatTweets() {
+  if (!Array.isArray(currentTweets) || currentTweets.length === 0) {
+    throw new Error('No tweets are loaded yet.');
+  }
+  if (currentTweets.length < 100) {
+    throw new Error('Load 100 tweets in the feed before asking questions.');
+  }
+  return currentTweets.slice(0, 100);
+}
+
 async function fetchSummary({ silent = false } = {}) {
   if (summaryInFlight) {
     return;
@@ -491,6 +528,42 @@ async function fetchSummary({ silent = false } = {}) {
   } finally {
     setSummaryLoading(false);
     summaryInFlight = false;
+  }
+}
+
+async function askChatQuestion(question) {
+  if (chatInFlight) {
+    return;
+  }
+  const trimmed = question ? question.trim() : '';
+  if (!trimmed) {
+    setChatStatus('Enter a question to ask Codex.');
+    return;
+  }
+
+  chatInFlight = true;
+  setChatLoading(true);
+  setChatStatus('Asking Codex about the latest tweets...');
+
+  try {
+    const tweets = await getChatTweets();
+    const response = await fetch('/api/tweet-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: trimmed, tweets })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload && payload.error ? payload.error : 'Chat request failed.');
+    }
+    setChatAnswer(payload.answer || 'No answer returned.');
+    setChatStatus('Answered.');
+  } catch (error) {
+    setChatAnswer('Answer failed. Try again.');
+    setChatStatus(error && error.message ? error.message : 'Chat failed.');
+  } finally {
+    setChatLoading(false);
+    chatInFlight = false;
   }
 }
 
@@ -865,6 +938,19 @@ if (searchInput) {
 
 if (summaryButton) {
   summaryButton.addEventListener('click', () => fetchSummary());
+}
+if (chatAskButton) {
+  chatAskButton.addEventListener('click', () => {
+    askChatQuestion(chatInputEl ? chatInputEl.value : '');
+  });
+}
+if (chatInputEl) {
+  chatInputEl.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      askChatQuestion(chatInputEl.value);
+    }
+  });
 }
 
 const storedCommand = localStorage.getItem(STORAGE_KEY);

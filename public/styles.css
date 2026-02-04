@@ -641,6 +641,107 @@ h1 {
   color: #f97316;
 }
 
+.chat-rail {
+  position: fixed;
+  bottom: clamp(16px, 4vw, 32px);
+  right: clamp(16px, 4vw, 48px);
+  width: min(360px, 90vw);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 12px;
+  z-index: 3;
+}
+
+.chat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.chat-header h3 {
+  margin: 6px 0 0;
+  font-size: 0.95rem;
+}
+
+.chat-body {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.chat-input {
+  resize: vertical;
+  min-height: 70px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.chat-input:focus {
+  outline: 2px solid #f5f5f5;
+  outline-offset: 2px;
+}
+
+.chat-button {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.chat-button:hover {
+  opacity: 0.85;
+}
+
+.chat-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.chat-answer {
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.chat-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+  min-height: 1em;
+}
+
 .command-note {
   margin: 8px 0 0;
   font-size: 0.85rem;
@@ -824,6 +925,12 @@ h1 {
   }
 
   .price-rail {
+    position: static;
+    width: 100%;
+    margin: 0 auto 24px;
+  }
+
+  .chat-rail {
     position: static;
     width: 100%;
     margin: 0 auto 24px;

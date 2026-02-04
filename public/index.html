@@ -118,6 +118,28 @@
       </div>
     </aside>
 
+    <aside class="chat-rail" aria-label="Ask Codex about the feed">
+      <div class="chat-header">
+        <div>
+          <div class="chat-kicker">Codex Q&A</div>
+          <h3>Ask about these tweets</h3>
+        </div>
+      </div>
+      <div class="chat-body">
+        <label class="chat-label" for="chatInput">Question</label>
+        <textarea
+          id="chatInput"
+          class="chat-input"
+          rows="3"
+          placeholder="Ask about themes, sentiment, authors, or specific tweets..."
+          data-chat-input
+        ></textarea>
+        <button class="chat-button" type="button" data-chat-ask>Ask Codex</button>
+        <div class="chat-answer" data-chat-answer>Waiting for your question.</div>
+        <div class="chat-status" data-chat-status></div>
+      </div>
+    </aside>
+
     <script src="app.js"></script>
   </body>
 </html>
