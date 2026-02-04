@@ -641,19 +641,38 @@ h1 {
   color: #f97316;
 }
 
-.chat-rail {
+.chat-modal {
   position: fixed;
-  bottom: clamp(16px, 4vw, 32px);
-  right: clamp(16px, 4vw, 48px);
-  width: min(360px, 90vw);
+  inset: 0;
+  display: none;
+  place-items: center;
+  z-index: 6;
+}
+
+.chat-modal.is-open {
+  display: grid;
+}
+
+.chat-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 5, 0.7);
+  backdrop-filter: blur(2px);
+}
+
+.chat-panel {
+  position: relative;
+  width: min(520px, 92vw);
+  max-height: 85vh;
+  overflow: auto;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: 18px;
+  padding: 18px;
   box-shadow: var(--shadow);
   display: grid;
   gap: 12px;
-  z-index: 3;
+  z-index: 1;
 }
 
 .chat-header {
@@ -673,6 +692,21 @@ h1 {
 .chat-header h3 {
   margin: 6px 0 0;
   font-size: 0.95rem;
+}
+
+.chat-close {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.chat-close:hover {
+  color: var(--ink);
 }
 
 .chat-body {
@@ -740,6 +774,13 @@ h1 {
   font-size: 0.75rem;
   color: var(--muted);
   min-height: 1em;
+}
+
+.chat-hint {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .command-note {
@@ -930,10 +971,8 @@ h1 {
     margin: 0 auto 24px;
   }
 
-  .chat-rail {
-    position: static;
-    width: 100%;
-    margin: 0 auto 24px;
+  .chat-panel {
+    width: min(560px, 92vw);
   }
 }
 

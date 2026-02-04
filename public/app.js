@@ -17,6 +17,8 @@ const summaryListEl = document.querySelector('[data-summary-list]');
 const summaryLeadEl = document.querySelector('[data-summary-lead]');
 const summaryStatusEl = document.querySelector('[data-summary-status]');
 const summaryTitleEl = document.querySelector('[data-summary-title]');
+const chatModalEl = document.querySelector('[data-chat-modal]');
+const chatCloseEls = document.querySelectorAll('[data-chat-close]');
 const chatInputEl = document.querySelector('[data-chat-input]');
 const chatAskButton = document.querySelector('[data-chat-ask]');
 const chatAnswerEl = document.querySelector('[data-chat-answer]');
@@ -197,6 +199,17 @@ function setChatAnswer(message) {
     return;
   }
   chatAnswerEl.textContent = message || '';
+}
+
+function setChatModalOpen(isOpen) {
+  if (!chatModalEl) {
+    return;
+  }
+  chatModalEl.classList.toggle('is-open', isOpen);
+  chatModalEl.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+  if (isOpen && chatInputEl) {
+    chatInputEl.focus();
+  }
 }
 
 function setSummaryLoading(isLoading) {
@@ -952,6 +965,22 @@ if (chatInputEl) {
     }
   });
 }
+if (chatCloseEls && chatCloseEls.length > 0) {
+  chatCloseEls.forEach((el) => {
+    el.addEventListener('click', () => setChatModalOpen(false));
+  });
+}
+document.addEventListener('keydown', (event) => {
+  const isCmdI =
+    (event.metaKey || event.ctrlKey) && (event.key === 'i' || event.key === 'I');
+  if (isCmdI) {
+    event.preventDefault();
+    setChatModalOpen(true);
+  }
+  if (event.key === 'Escape') {
+    setChatModalOpen(false);
+  }
+});
 
 const storedCommand = localStorage.getItem(STORAGE_KEY);
 let legacyCommandDetected = false;

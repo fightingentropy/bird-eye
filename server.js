@@ -279,6 +279,28 @@ ${list}
 `.trim();
 }
 
+function buildChatPrompt(tweets, question) {
+  const list = tweets
+    .map((tweet, index) => {
+      const author =
+        tweet && tweet.author && tweet.author.username ? `@${tweet.author.username}` : 'unknown';
+      const text = tweet && tweet.text ? tweet.text.replace(/\s+/g, ' ').trim() : '';
+      return `${index + 1}. (${author}) ${text}`;
+    })
+    .join('\n');
+
+  return `
+You are answering a question about the 100 tweets below.
+Be concise and specific. If you reference a tweet, include its number (e.g., "#12").
+If the tweets do not contain enough information, say so clearly.
+
+Question: ${question}
+
+Tweets:
+${list}
+`.trim();
+}
+
 function extractCodexText(payload) {
   if (!payload) {
     return '';
@@ -622,6 +644,22 @@ ${outputText}
   return summary;
 }
 
+async function requestCodexChat(question, tweets) {
+  if (!question) {
+    throw new Error('No question provided.');
+  }
+  if (!Array.isArray(tweets) || tweets.length === 0) {
+    throw new Error('No tweets available to answer.');
+  }
+  const prompt = buildChatPrompt(tweets.slice(0, 100), question);
+  const outputText = await requestCodexText(prompt);
+  const answer = typeof outputText === 'string' ? outputText.trim() : '';
+  if (!answer) {
+    throw new Error('Codex response contained no text.');
+  }
+  return answer;
+}
+
 async function fetchHyperliquidPrices() {
   const now = Date.now();
   if (lastPricePayload && now - lastPriceFetchedAt < PRICE_CACHE_MS) {
@@ -756,6 +794,57 @@ Bun.serve({
         return jsonResponse(
           {
             error: error && error.message ? error.message : 'Failed to summarize tweets.'
+          },
+          500
+        );
+      }
+    }
+
+    if (url.pathname === '/api/tweet-chat') {
+      if (request.method !== 'POST') {
+        return jsonResponse({ error: 'Method not allowed.' }, 405);
+      }
+
+      try {
+        let body = {};
+        try {
+          body = await request.json();
+        } catch (error) {
+          body = {};
+        }
+
+        const question =
+          typeof body.question === 'string' && body.question.trim()
+            ? body.question.trim()
+            : '';
+        let tweets = Array.isArray(body.tweets) ? body.tweets : null;
+
+        if (!tweets || tweets.length === 0) {
+          const raw = await fetchTweets([
+            'list-timeline',
+            DEFAULT_LIST,
+            '-n',
+            '100',
+            '--json'
+          ]);
+          const payload = buildPayload(
+            raw,
+            `bird list-timeline ${DEFAULT_LIST} -n 100 --json`,
+            100
+          );
+          tweets = payload.tweets;
+        }
+
+        const answer = await requestCodexChat(question, tweets);
+        return jsonResponse({
+          answer,
+          fetchedAt: new Date().toISOString(),
+          count: Array.isArray(tweets) ? tweets.length : 0
+        });
+      } catch (error) {
+        return jsonResponse(
+          {
+            error: error && error.message ? error.message : 'Failed to answer question.'
           },
           500
         );
