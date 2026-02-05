@@ -5,12 +5,13 @@ const os = require('os');
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const BIRD_COMMAND = process.env.BIRD_COMMAND || 'bird';
-const TWEET_COUNT = 100;
-const REQUEST_TIMEOUT_MS = 20000;
-const CODEX_TIMEOUT_MS = 20000;
+const TWEET_COUNT = 350;
+const REQUEST_TIMEOUT_MS = 60000;
+const CODEX_TIMEOUT_MS = 60000;
 const DEFAULT_LIST = '1933193197817135501';
 const COMMAND_DISPLAY = `bird list-timeline ${DEFAULT_LIST} -n ${TWEET_COUNT} --json`;
 const cacheByCommand = new Map();
+const TWEET_CACHE_MS = 60 * 60 * 1000;
 const summaryCacheByKey = new Map();
 const PRICE_CACHE_MS = 10000;
 const PRICE_TIMEOUT_MS = 8000;
@@ -64,11 +65,31 @@ async function runBird(args) {
   return stdout;
 }
 
+async function refreshBirdQueryIds() {
+  const process = Bun.spawn([BIRD_COMMAND, 'query-ids'], {
+    stdout: 'pipe',
+    stderr: 'pipe'
+  });
+  const stdoutPromise = new Response(process.stdout).text();
+  const stderrPromise = new Response(process.stderr).text();
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process.exited,
+    stdoutPromise,
+    stderrPromise
+  ]);
+  if (exitCode !== 0) {
+    const message = stderr && stderr.trim() ? stderr.trim() : `bird query-ids exited with code ${exitCode}`;
+    throw new Error(message);
+  }
+  return stdout;
+}
+
 function parseCommand(rawCommand) {
   if (!rawCommand) {
     return {
       args: ['list-timeline', DEFAULT_LIST, '-n', String(TWEET_COUNT), '--json'],
-      display: COMMAND_DISPLAY
+      display: COMMAND_DISPLAY,
+      requestedCount: TWEET_COUNT
     };
   }
 
@@ -88,7 +109,7 @@ function parseCommand(rawCommand) {
   }
 
   const args = [command];
-  let count = TWEET_COUNT;
+  let requestedCount = TWEET_COUNT;
   let useFollowing = false;
   let listTarget = DEFAULT_LIST;
 
@@ -116,10 +137,10 @@ function parseCommand(rawCommand) {
     if (part === '-n' || part === '--count') {
       const value = parts[i + 1];
       const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 100) {
-        return { error: 'Count must be an integer between 1 and 100.' };
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 350) {
+        return { error: 'Count must be an integer between 1 and 350.' };
       }
-      count = parsed;
+      requestedCount = parsed;
       i += 1;
       continue;
     }
@@ -134,28 +155,41 @@ function parseCommand(rawCommand) {
       args.push('--following');
     }
   }
-  args.push('-n', String(count), '--json');
+  args.push('-n', String(requestedCount), '--json');
 
   if (command === 'list-timeline') {
     return {
       args,
-      display: `bird list-timeline ${listTarget} -n ${count} --json`
+      display: `bird list-timeline ${listTarget} -n ${requestedCount} --json`,
+      requestedCount
     };
   }
 
   return {
     args,
-    display: `bird home${useFollowing ? ' --following' : ''} -n ${count} --json`
+    display: `bird home${useFollowing ? ' --following' : ''} -n ${requestedCount} --json`,
+    requestedCount
   };
 }
 
 async function fetchTweets(commandArgs) {
   const args = commandArgs || ['home', '-n', String(TWEET_COUNT), '--json'];
-  const stdout = await withTimeout(
-    runBird(args),
-    REQUEST_TIMEOUT_MS,
-    'bird request timed out.'
-  );
+  let stdout;
+  try {
+    stdout = await withTimeout(runBird(args), REQUEST_TIMEOUT_MS, 'bird request timed out.');
+  } catch (error) {
+    const message = error && error.message ? error.message : '';
+    if (message.includes('Query: Unspecified')) {
+      await withTimeout(
+        refreshBirdQueryIds(),
+        REQUEST_TIMEOUT_MS,
+        'bird query-ids request timed out.'
+      );
+      stdout = await withTimeout(runBird(args), REQUEST_TIMEOUT_MS, 'bird request timed out.');
+    } else {
+      throw error;
+    }
+  }
 
   try {
     return JSON.parse(stdout);
@@ -261,18 +295,21 @@ function buildSummaryPrompt(tweets) {
     .join('\n');
 
   return `
-Summarize the 100 tweets into topical insights.
+Summarize the 350 tweets into a financial/trading brief.
+Ignore off-topic content (memes, pure jokes, unrelated politics).
+Focus on market headlines, important news, sentiment, positioning, and trade-relevant themes.
 Output ONLY plain text in this exact format:
 
 Title: <short title>
-Overall: <1-2 sentence summary>
+Overall: <1-2 sentence market summary>
 Topics:
 - <topic> | <count> | <short summary (<=18 words)> | idx: <comma-separated tweet numbers>
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 
-Use 4-7 topics. Counts should add up to 100. Use 1-based tweet numbers. Be concise and specific.
+Use 4-7 topics. Counts should add up to the number of included financial tweets.
+Exclude non-financial tweets from counts. Use 1-based tweet numbers. Be concise and specific.
 
 Tweets:
 ${list}
@@ -290,7 +327,7 @@ function buildChatPrompt(tweets, question) {
     .join('\n');
 
   return `
-You are answering a question about the 100 tweets below.
+You are answering a question about the 350 tweets below.
 Be concise and specific. If you reference a tweet, include its number (e.g., "#12").
 If the tweets do not contain enough information, say so clearly.
 
@@ -609,7 +646,7 @@ async function requestCodexSummary(tweets) {
     throw new Error('No tweets available to summarize.');
   }
 
-  const prompt = buildSummaryPrompt(tweets.slice(0, 100));
+  const prompt = buildSummaryPrompt(tweets.slice(0, 350));
   const outputText = await requestCodexText(prompt);
 
   let summary = parseSummaryFromText(outputText);
@@ -619,17 +656,17 @@ async function requestCodexSummary(tweets) {
   }
   if (!summary) {
     const repairPrompt = `
-Reformat the text below into this exact format (plain text only):
+Reformat the text below into this exact format (plain text only) and keep the financial/trading focus:
 
 Title: <short title>
-Overall: <1-2 sentence summary>
+Overall: <1-2 sentence market summary>
 Topics:
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 - <topic> | <count> | <short summary (<=18 words)>
 
-Use 4-7 topics. Counts should add up to 100. No extra lines.
+Use 4-7 topics. Counts should add up to the number of included financial tweets. No extra lines.
 
 Text to fix:
 ${outputText}
@@ -651,7 +688,7 @@ async function requestCodexChat(question, tweets) {
   if (!Array.isArray(tweets) || tweets.length === 0) {
     throw new Error('No tweets available to answer.');
   }
-  const prompt = buildChatPrompt(tweets.slice(0, 100), question);
+  const prompt = buildChatPrompt(tweets.slice(0, 350), question);
   const outputText = await requestCodexText(prompt);
   const answer = typeof outputText === 'string' ? outputText.trim() : '';
   if (!answer) {
@@ -707,6 +744,7 @@ async function fetchHyperliquidPrices() {
 
 Bun.serve({
   port: PORT,
+  idleTimeout: 60,
   async fetch(request) {
     const url = new URL(request.url);
 
@@ -726,16 +764,26 @@ Bun.serve({
 
         const cacheKey = commandResult.display;
 
-        if (!cacheByCommand.has(cacheKey) || shouldRefresh) {
+        const cached = cacheByCommand.get(cacheKey);
+        const isStale =
+          !cached || !cached.cachedAt || Date.now() - cached.cachedAt > TWEET_CACHE_MS;
+
+        if (shouldRefresh || isStale) {
           const raw = await fetchTweets(commandResult.args);
-          const countArgIndex = commandResult.args.indexOf('-n');
           const countOverride =
-            countArgIndex !== -1 ? Number(commandResult.args[countArgIndex + 1]) : TWEET_COUNT;
+            typeof commandResult.requestedCount === 'number'
+              ? commandResult.requestedCount
+              : TWEET_COUNT;
           const payload = buildPayload(raw, commandResult.display, countOverride);
-          cacheByCommand.set(cacheKey, payload);
+          cacheByCommand.set(cacheKey, { ...payload, cachedAt: Date.now() });
         }
 
-        return jsonResponse(cacheByCommand.get(cacheKey));
+        const responsePayload = cacheByCommand.get(cacheKey);
+        if (!responsePayload) {
+          return jsonResponse(buildPayload([], commandResult.display, 0));
+        }
+        const { cachedAt, ...safePayload } = responsePayload;
+        return jsonResponse(safePayload);
       } catch (error) {
         return jsonResponse(
           { error: error && error.message ? error.message : 'Failed to fetch tweets.' },
@@ -769,13 +817,13 @@ Bun.serve({
             'list-timeline',
             DEFAULT_LIST,
             '-n',
-            '100',
+            '350',
             '--json'
           ]);
           const payload = buildPayload(
             raw,
-            `bird list-timeline ${DEFAULT_LIST} -n 100 --json`,
-            100
+            `bird list-timeline ${DEFAULT_LIST} -n 350 --json`,
+            350
           );
           tweets = payload.tweets;
         }
@@ -824,13 +872,13 @@ Bun.serve({
             'list-timeline',
             DEFAULT_LIST,
             '-n',
-            '100',
+            '350',
             '--json'
           ]);
           const payload = buildPayload(
             raw,
-            `bird list-timeline ${DEFAULT_LIST} -n 100 --json`,
-            100
+            `bird list-timeline ${DEFAULT_LIST} -n 350 --json`,
+            350
           );
           tweets = payload.tweets;
         }

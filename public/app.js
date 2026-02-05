@@ -9,6 +9,7 @@ const commandHelp = document.querySelector('[data-command-help]');
 const applyButton = document.querySelector('[data-apply]');
 const sortSelect = document.querySelector('[data-sort]');
 const countSelect = document.querySelector('[data-count]');
+const sourceSelect = document.querySelector('[data-source]');
 const searchInput = document.querySelector('[data-search]');
 const priceUpdatedEl = document.querySelector('[data-price-updated]');
 const summaryButton = document.querySelector('[data-summary-refresh]');
@@ -22,7 +23,6 @@ const chatCloseEls = document.querySelectorAll('[data-chat-close]');
 const chatInputEl = document.querySelector('[data-chat-input]');
 const chatAskButton = document.querySelector('[data-chat-ask]');
 const chatAnswerEl = document.querySelector('[data-chat-answer]');
-const chatStatusEl = document.querySelector('[data-chat-status]');
 const priceEls = {
   BTC: document.querySelector('[data-price="BTC"]'),
   ETH: document.querySelector('[data-price="ETH"]'),
@@ -34,13 +34,16 @@ const priceChangeEls = {
   HYPE: document.querySelector('[data-change="HYPE"]')
 };
 
-const DEFAULT_COMMAND = 'bird list-timeline 1933193197817135501 -n 100 --json';
+const LIST_ID = '1933193197817135501';
+const DEFAULT_COMMAND = `bird list-timeline ${LIST_ID} -n 350 --json`;
 const STORAGE_KEY = 'bird-dashboard-command';
 const SORT_KEY = 'bird-dashboard-sort';
 const COUNT_KEY = 'bird-dashboard-count';
 const SEARCH_KEY = 'bird-dashboard-search';
 const SUMMARY_CACHE_KEY = 'bird-dashboard-summary-cache';
-const DEFAULT_COUNT = 100;
+const CHAT_BUTTON_LABEL = 'Ask Codex';
+const CHAT_LOADING_LABEL = 'Asking...';
+const DEFAULT_COUNT = 350;
 let activeCommand = DEFAULT_COMMAND;
 let currentTweets = [];
 let summaryInFlight = false;
@@ -103,6 +106,32 @@ function setCommandHelp(message, isError = false) {
 
   commandHelp.textContent = message || '';
   commandHelp.style.color = isError ? '#f6c8b5' : '';
+}
+
+function buildCommandForSource(source, count) {
+  const safeCount = Number.isInteger(count) ? count : DEFAULT_COUNT;
+  if (source === 'following') {
+    return `bird home --following -n ${safeCount} --json`;
+  }
+  if (source === 'foryou') {
+    return `bird home -n ${safeCount} --json`;
+  }
+  return `bird list-timeline ${LIST_ID} -n ${safeCount} --json`;
+}
+
+function syncSourceSelect(command) {
+  if (!sourceSelect || !command) {
+    return;
+  }
+  if (command.startsWith('bird home --following')) {
+    sourceSelect.value = 'following';
+    return;
+  }
+  if (command.startsWith('bird home')) {
+    sourceSelect.value = 'foryou';
+    return;
+  }
+  sourceSelect.value = 'list';
 }
 
 function setLoading(isLoading) {
@@ -179,19 +208,13 @@ function setSummaryStatus(message) {
   summaryStatusEl.textContent = message || '';
 }
 
-function setChatStatus(message) {
-  if (!chatStatusEl) {
-    return;
-  }
-  chatStatusEl.textContent = message || '';
-}
-
 function setChatLoading(isLoading) {
   if (!chatAskButton) {
     return;
   }
   chatAskButton.disabled = isLoading;
   chatAskButton.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  chatAskButton.textContent = isLoading ? CHAT_LOADING_LABEL : CHAT_BUTTON_LABEL;
 }
 
 function setChatAnswer(message) {
@@ -486,20 +509,20 @@ async function getSummaryTweets() {
   if (!Array.isArray(currentTweets) || currentTweets.length === 0) {
     throw new Error('No tweets are loaded yet.');
   }
-  if (currentTweets.length < 100) {
-    throw new Error('Load 100 tweets in the feed before summarizing.');
+  if (currentTweets.length < 350) {
+    throw new Error('Load 350 tweets in the feed before summarizing.');
   }
-  return currentTweets.slice(0, 100);
+  return currentTweets.slice(0, 350);
 }
 
 async function getChatTweets() {
   if (!Array.isArray(currentTweets) || currentTweets.length === 0) {
     throw new Error('No tweets are loaded yet.');
   }
-  if (currentTweets.length < 100) {
-    throw new Error('Load 100 tweets in the feed before asking questions.');
+  if (currentTweets.length < 350) {
+    throw new Error('Load 350 tweets in the feed before asking questions.');
   }
-  return currentTweets.slice(0, 100);
+  return currentTweets.slice(0, 350);
 }
 
 async function fetchSummary({ silent = false } = {}) {
@@ -509,7 +532,7 @@ async function fetchSummary({ silent = false } = {}) {
 
   summaryInFlight = true;
   if (!silent) {
-    setSummaryStatus('Summarizing 100 latest tweets...');
+    setSummaryStatus('Summarizing 350 latest tweets...');
   }
   setSummaryLoading(true);
 
@@ -550,13 +573,13 @@ async function askChatQuestion(question) {
   }
   const trimmed = question ? question.trim() : '';
   if (!trimmed) {
-    setChatStatus('Enter a question to ask Codex.');
+    setChatAnswer('Enter a question to ask Codex.');
     return;
   }
 
   chatInFlight = true;
   setChatLoading(true);
-  setChatStatus('Asking Codex about the latest tweets...');
+  setChatAnswer('Generating...');
 
   try {
     const tweets = await getChatTweets();
@@ -570,10 +593,8 @@ async function askChatQuestion(question) {
       throw new Error(payload && payload.error ? payload.error : 'Chat request failed.');
     }
     setChatAnswer(payload.answer || 'No answer returned.');
-    setChatStatus('Answered.');
   } catch (error) {
     setChatAnswer('Answer failed. Try again.');
-    setChatStatus(error && error.message ? error.message : 'Chat failed.');
   } finally {
     setChatLoading(false);
     chatInFlight = false;
@@ -731,7 +752,7 @@ function setCountOnCommand(command, count) {
     return command;
   }
 
-  const nextCount = Math.max(1, Math.min(100, count));
+  const nextCount = Math.max(1, Math.min(350, count));
   if (/(?:-n|--count)\s+\d+/.test(command)) {
     return command.replace(/(?:-n|--count)\s+\d+/, `-n ${nextCount}`);
   }
@@ -853,8 +874,8 @@ async function fetchTweets(options = {}) {
 
     currentTweets = payload.tweets || [];
     renderWithSort();
-    if (Array.isArray(currentTweets) && currentTweets.length >= 100) {
-      const summaryKey = buildSummaryKey(currentTweets.slice(0, 100));
+    if (Array.isArray(currentTweets) && currentTweets.length >= 350) {
+      const summaryKey = buildSummaryKey(currentTweets.slice(0, 350));
       const cachedSummary = getSummaryFromCache(summaryKey);
       if (cachedSummary) {
         renderSummary(cachedSummary);
@@ -882,6 +903,7 @@ async function fetchTweets(options = {}) {
       localStorage.setItem(STORAGE_KEY, command);
       setCommandHelp('Command applied.', false);
       syncCountSelect(command);
+      syncSourceSelect(command);
     }
   } catch (error) {
     setError(error && error.message ? error.message : 'Failed to fetch tweets.');
@@ -913,6 +935,22 @@ function applyCommand() {
   fetchTweets({ refresh: true });
 }
 
+function applySourceSelection(source) {
+  if (!sourceSelect) {
+    return;
+  }
+  const count = getCountFromCommand(activeCommand) || DEFAULT_COUNT;
+  const nextCommand = buildCommandForSource(source, count);
+  activeCommand = nextCommand;
+  localStorage.setItem(STORAGE_KEY, nextCommand);
+  if (commandInput) {
+    commandInput.value = nextCommand;
+  }
+  syncSourceSelect(nextCommand);
+  syncCountSelect(nextCommand);
+  fetchTweets({ refresh: true });
+}
+
 if (refreshButton) {
   refreshButton.addEventListener('click', () => fetchTweets({ refresh: true }));
 }
@@ -939,6 +977,12 @@ if (countSelect) {
   countSelect.addEventListener('change', () => {
     const nextCount = Number.parseInt(countSelect.value, 10);
     applyCountSelection(nextCount, { shouldFetch: true });
+  });
+}
+
+if (sourceSelect) {
+  sourceSelect.addEventListener('change', () => {
+    applySourceSelection(sourceSelect.value);
   });
 }
 
@@ -1008,6 +1052,9 @@ applyCountSelection(initialCount, { shouldFetch: false });
 const storedSort = localStorage.getItem(SORT_KEY);
 if (sortSelect && storedSort) {
   sortSelect.value = storedSort;
+}
+if (sourceSelect) {
+  syncSourceSelect(activeCommand);
 }
 const storedSearch = localStorage.getItem(SEARCH_KEY);
 if (searchInput && storedSearch) {

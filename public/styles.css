@@ -677,21 +677,7 @@ h1 {
 
 .chat-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.chat-kicker {
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.65rem;
-  color: var(--muted);
-}
-
-.chat-header h3 {
-  margin: 6px 0 0;
-  font-size: 0.95rem;
+  justify-content: flex-end;
 }
 
 .chat-close {
@@ -712,11 +698,6 @@ h1 {
 .chat-body {
   display: grid;
   gap: 10px;
-}
-
-.chat-label {
-  font-size: 0.75rem;
-  color: var(--muted);
 }
 
 .chat-input {
@@ -770,18 +751,10 @@ h1 {
   white-space: pre-wrap;
 }
 
-.chat-status {
-  font-size: 0.75rem;
-  color: var(--muted);
-  min-height: 1em;
+.chat-answer:empty {
+  display: none;
 }
 
-.chat-hint {
-  font-size: 0.7rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
 
 .command-note {
   margin: 8px 0 0;
