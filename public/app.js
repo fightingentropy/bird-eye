@@ -542,7 +542,7 @@ async function fetchSummary({ silent = false } = {}) {
     const response = await fetch('/api/tweet-summary', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tweets, key })
+      body: JSON.stringify({ key, cmd: activeCommand })
     });
     const payload = await response.json();
 
@@ -582,11 +582,11 @@ async function askChatQuestion(question) {
   setChatAnswer('Generating...');
 
   try {
-    const tweets = await getChatTweets();
+    await getChatTweets();
     const response = await fetch('/api/tweet-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: trimmed, tweets })
+      body: JSON.stringify({ question: trimmed, cmd: activeCommand })
     });
     const payload = await response.json();
     if (!response.ok) {

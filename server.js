@@ -12,7 +12,10 @@ const DEFAULT_LIST = '1933193197817135501';
 const COMMAND_DISPLAY = `bird list-timeline ${DEFAULT_LIST} -n ${TWEET_COUNT} --json`;
 const cacheByCommand = new Map();
 const TWEET_CACHE_MS = 60 * 60 * 1000;
+const TWEET_CACHE_MAX_ENTRIES = 30;
 const summaryCacheByKey = new Map();
+const SUMMARY_CACHE_MS = 60 * 60 * 1000;
+const SUMMARY_CACHE_MAX_ENTRIES = 120;
 const PRICE_CACHE_MS = 10000;
 const PRICE_TIMEOUT_MS = 8000;
 const PRICE_SYMBOLS = ['BTC', 'ETH', 'HYPE'];
@@ -215,6 +218,100 @@ function buildPayload(raw, commandDisplay, countOverride) {
       command: commandDisplay || COMMAND_DISPLAY
     }
   };
+}
+
+function pruneCacheMap(map, getTimestamp, maxAgeMs, maxEntries) {
+  const now = Date.now();
+  for (const [key, value] of map.entries()) {
+    const ts = getTimestamp(value);
+    if (!Number.isInteger(ts) || now - ts > maxAgeMs) {
+      map.delete(key);
+    }
+  }
+
+  if (map.size <= maxEntries) {
+    return;
+  }
+
+  const oldestFirst = Array.from(map.entries()).sort(
+    (a, b) => getTimestamp(a[1]) - getTimestamp(b[1])
+  );
+  const overflow = map.size - maxEntries;
+  for (let i = 0; i < overflow; i += 1) {
+    map.delete(oldestFirst[i][0]);
+  }
+}
+
+function pruneTweetCache() {
+  pruneCacheMap(
+    cacheByCommand,
+    (entry) => (entry && typeof entry.cachedAt === 'number' ? entry.cachedAt : 0),
+    TWEET_CACHE_MS,
+    TWEET_CACHE_MAX_ENTRIES
+  );
+}
+
+function getTweetCacheEntry(cacheKey) {
+  pruneTweetCache();
+  const entry = cacheByCommand.get(cacheKey);
+  if (!entry || typeof entry.cachedAt !== 'number') {
+    return null;
+  }
+  return entry;
+}
+
+function setTweetCacheEntry(cacheKey, payload) {
+  const entry = { ...payload, cachedAt: Date.now() };
+  cacheByCommand.set(cacheKey, entry);
+  pruneTweetCache();
+  return cacheByCommand.get(cacheKey) || entry;
+}
+
+async function getOrFetchTweetPayload(commandResult, { forceRefresh = false } = {}) {
+  const cacheKey = commandResult.display;
+  if (!forceRefresh) {
+    const cached = getTweetCacheEntry(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  const raw = await fetchTweets(commandResult.args);
+  const countOverride =
+    typeof commandResult.requestedCount === 'number'
+      ? commandResult.requestedCount
+      : TWEET_COUNT;
+  const payload = buildPayload(raw, commandResult.display, countOverride);
+  return setTweetCacheEntry(cacheKey, payload);
+}
+
+function pruneSummaryCache() {
+  pruneCacheMap(
+    summaryCacheByKey,
+    (entry) => (entry && typeof entry.cachedAt === 'number' ? entry.cachedAt : 0),
+    SUMMARY_CACHE_MS,
+    SUMMARY_CACHE_MAX_ENTRIES
+  );
+}
+
+function getSummaryCacheEntry(cacheKey) {
+  if (!cacheKey) {
+    return null;
+  }
+  pruneSummaryCache();
+  const entry = summaryCacheByKey.get(cacheKey);
+  return entry && entry.payload ? entry.payload : null;
+}
+
+function setSummaryCacheEntry(cacheKey, payload) {
+  if (!cacheKey || !payload) {
+    return;
+  }
+  summaryCacheByKey.set(cacheKey, {
+    payload,
+    cachedAt: Date.now()
+  });
+  pruneSummaryCache();
 }
 
 function normalizeTweets(data) {
@@ -537,7 +634,7 @@ function extractCodexTextFromStream(raw) {
         escaped = false;
         continue;
       }
-      if (ch === '\\\\') {
+      if (ch === '\\') {
         if (inString) {
           escaped = true;
         }
@@ -762,23 +859,9 @@ Bun.serve({
           return jsonResponse({ error: commandResult.error }, 400);
         }
 
-        const cacheKey = commandResult.display;
-
-        const cached = cacheByCommand.get(cacheKey);
-        const isStale =
-          !cached || !cached.cachedAt || Date.now() - cached.cachedAt > TWEET_CACHE_MS;
-
-        if (shouldRefresh || isStale) {
-          const raw = await fetchTweets(commandResult.args);
-          const countOverride =
-            typeof commandResult.requestedCount === 'number'
-              ? commandResult.requestedCount
-              : TWEET_COUNT;
-          const payload = buildPayload(raw, commandResult.display, countOverride);
-          cacheByCommand.set(cacheKey, { ...payload, cachedAt: Date.now() });
-        }
-
-        const responsePayload = cacheByCommand.get(cacheKey);
+        const responsePayload = await getOrFetchTweetPayload(commandResult, {
+          forceRefresh: shouldRefresh
+        });
         if (!responsePayload) {
           return jsonResponse(buildPayload([], commandResult.display, 0));
         }
@@ -806,27 +889,18 @@ Bun.serve({
         }
 
         const cacheKey = typeof body.key === 'string' && body.key.trim() ? body.key.trim() : null;
-        let tweets = Array.isArray(body.tweets) ? body.tweets : null;
-
-        if (cacheKey && summaryCacheByKey.has(cacheKey)) {
-          return jsonResponse(summaryCacheByKey.get(cacheKey));
+        const cachedSummary = getSummaryCacheEntry(cacheKey);
+        if (cachedSummary) {
+          return jsonResponse(cachedSummary);
         }
 
-        if (!tweets || tweets.length === 0) {
-          const raw = await fetchTweets([
-            'list-timeline',
-            DEFAULT_LIST,
-            '-n',
-            '350',
-            '--json'
-          ]);
-          const payload = buildPayload(
-            raw,
-            `bird list-timeline ${DEFAULT_LIST} -n 350 --json`,
-            350
-          );
-          tweets = payload.tweets;
+        const commandParam = typeof body.cmd === 'string' ? body.cmd : null;
+        const commandResult = parseCommand(commandParam);
+        if (commandResult.error) {
+          return jsonResponse({ error: commandResult.error }, 400);
         }
+        const tweetPayload = await getOrFetchTweetPayload(commandResult);
+        const tweets = tweetPayload && Array.isArray(tweetPayload.tweets) ? tweetPayload.tweets : [];
 
         const summary = await requestCodexSummary(tweets);
         const payload = {
@@ -834,9 +908,7 @@ Bun.serve({
           fetchedAt: new Date().toISOString(),
           count: Array.isArray(tweets) ? tweets.length : 0
         };
-        if (cacheKey) {
-          summaryCacheByKey.set(cacheKey, payload);
-        }
+        setSummaryCacheEntry(cacheKey, payload);
         return jsonResponse(payload);
       } catch (error) {
         return jsonResponse(
@@ -865,23 +937,13 @@ Bun.serve({
           typeof body.question === 'string' && body.question.trim()
             ? body.question.trim()
             : '';
-        let tweets = Array.isArray(body.tweets) ? body.tweets : null;
-
-        if (!tweets || tweets.length === 0) {
-          const raw = await fetchTweets([
-            'list-timeline',
-            DEFAULT_LIST,
-            '-n',
-            '350',
-            '--json'
-          ]);
-          const payload = buildPayload(
-            raw,
-            `bird list-timeline ${DEFAULT_LIST} -n 350 --json`,
-            350
-          );
-          tweets = payload.tweets;
+        const commandParam = typeof body.cmd === 'string' ? body.cmd : null;
+        const commandResult = parseCommand(commandParam);
+        if (commandResult.error) {
+          return jsonResponse({ error: commandResult.error }, 400);
         }
+        const tweetPayload = await getOrFetchTweetPayload(commandResult);
+        const tweets = tweetPayload && Array.isArray(tweetPayload.tweets) ? tweetPayload.tweets : [];
 
         const answer = await requestCodexChat(question, tweets);
         return jsonResponse({
