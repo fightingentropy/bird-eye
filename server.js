@@ -5,7 +5,7 @@ const os = require('os');
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const BIRD_COMMAND = process.env.BIRD_COMMAND || 'bird';
-const TWEET_COUNT = 350;
+const TWEET_COUNT = 102;
 const REQUEST_TIMEOUT_MS = 60000;
 const CODEX_TIMEOUT_MS = 60000;
 const DEFAULT_LIST = '1933193197817135501';
@@ -140,8 +140,8 @@ function parseCommand(rawCommand) {
     if (part === '-n' || part === '--count') {
       const value = parts[i + 1];
       const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 350) {
-        return { error: 'Count must be an integer between 1 and 350.' };
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 102) {
+        return { error: 'Count must be an integer between 1 and 102.' };
       }
       requestedCount = parsed;
       i += 1;
@@ -392,7 +392,7 @@ function buildSummaryPrompt(tweets) {
     .join('\n');
 
   return `
-Summarize the 350 tweets into a financial/trading brief.
+Summarize the 102 tweets into a financial/trading brief.
 Ignore off-topic content (memes, pure jokes, unrelated politics).
 Focus on market headlines, important news, sentiment, positioning, and trade-relevant themes.
 Output ONLY plain text in this exact format:
@@ -424,7 +424,7 @@ function buildChatPrompt(tweets, question) {
     .join('\n');
 
   return `
-You are answering a question about the 350 tweets below.
+You are answering a question about the 102 tweets below.
 Be concise and specific. If you reference a tweet, include its number (e.g., "#12").
 If the tweets do not contain enough information, say so clearly.
 

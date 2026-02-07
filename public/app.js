@@ -35,7 +35,7 @@ const priceChangeEls = {
 };
 
 const LIST_ID = '1933193197817135501';
-const DEFAULT_COMMAND = `bird list-timeline ${LIST_ID} -n 350 --json`;
+const DEFAULT_COMMAND = `bird list-timeline ${LIST_ID} -n 102 --json`;
 const STORAGE_KEY = 'bird-dashboard-command';
 const SORT_KEY = 'bird-dashboard-sort';
 const COUNT_KEY = 'bird-dashboard-count';
@@ -43,7 +43,7 @@ const SEARCH_KEY = 'bird-dashboard-search';
 const SUMMARY_CACHE_KEY = 'bird-dashboard-summary-cache';
 const CHAT_BUTTON_LABEL = 'Ask Codex';
 const CHAT_LOADING_LABEL = 'Asking...';
-const DEFAULT_COUNT = 350;
+const DEFAULT_COUNT = 102;
 let activeCommand = DEFAULT_COMMAND;
 let currentTweets = [];
 let summaryInFlight = false;
@@ -509,20 +509,20 @@ async function getSummaryTweets() {
   if (!Array.isArray(currentTweets) || currentTweets.length === 0) {
     throw new Error('No tweets are loaded yet.');
   }
-  if (currentTweets.length < 350) {
-    throw new Error('Load 350 tweets in the feed before summarizing.');
+  if (currentTweets.length < 102) {
+    throw new Error('Load 102 tweets in the feed before summarizing.');
   }
-  return currentTweets.slice(0, 350);
+  return currentTweets.slice(0, 102);
 }
 
 async function getChatTweets() {
   if (!Array.isArray(currentTweets) || currentTweets.length === 0) {
     throw new Error('No tweets are loaded yet.');
   }
-  if (currentTweets.length < 350) {
-    throw new Error('Load 350 tweets in the feed before asking questions.');
+  if (currentTweets.length < 102) {
+    throw new Error('Load 102 tweets in the feed before asking questions.');
   }
-  return currentTweets.slice(0, 350);
+  return currentTweets.slice(0, 102);
 }
 
 async function fetchSummary({ silent = false } = {}) {
@@ -532,7 +532,7 @@ async function fetchSummary({ silent = false } = {}) {
 
   summaryInFlight = true;
   if (!silent) {
-    setSummaryStatus('Summarizing 350 latest tweets...');
+    setSummaryStatus('Summarizing 102 latest tweets...');
   }
   setSummaryLoading(true);
 
@@ -752,7 +752,7 @@ function setCountOnCommand(command, count) {
     return command;
   }
 
-  const nextCount = Math.max(1, Math.min(350, count));
+  const nextCount = Math.max(1, Math.min(102, count));
   if (/(?:-n|--count)\s+\d+/.test(command)) {
     return command.replace(/(?:-n|--count)\s+\d+/, `-n ${nextCount}`);
   }
@@ -874,8 +874,8 @@ async function fetchTweets(options = {}) {
 
     currentTweets = payload.tweets || [];
     renderWithSort();
-    if (Array.isArray(currentTweets) && currentTweets.length >= 350) {
-      const summaryKey = buildSummaryKey(currentTweets.slice(0, 350));
+    if (Array.isArray(currentTweets) && currentTweets.length >= 102) {
+      const summaryKey = buildSummaryKey(currentTweets.slice(0, 102));
       const cachedSummary = getSummaryFromCache(summaryKey);
       if (cachedSummary) {
         renderSummary(cachedSummary);
