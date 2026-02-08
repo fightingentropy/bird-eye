@@ -35,7 +35,7 @@ const priceChangeEls = {
 };
 
 const LIST_ID = '1933193197817135501';
-const DEFAULT_COMMAND = `bird list-timeline ${LIST_ID} -n 102 --json`;
+const DEFAULT_COMMAND = `bird list-timeline ${LIST_ID} -n 200 --json`;
 const STORAGE_KEY = 'bird-dashboard-command';
 const SORT_KEY = 'bird-dashboard-sort';
 const COUNT_KEY = 'bird-dashboard-count';
@@ -43,7 +43,7 @@ const SEARCH_KEY = 'bird-dashboard-search';
 const SUMMARY_CACHE_KEY = 'bird-dashboard-summary-cache';
 const CHAT_BUTTON_LABEL = 'Ask Codex';
 const CHAT_LOADING_LABEL = 'Asking...';
-const DEFAULT_COUNT = 102;
+const DEFAULT_COUNT = 200;
 let activeCommand = DEFAULT_COMMAND;
 let currentTweets = [];
 let summaryInFlight = false;
@@ -752,7 +752,7 @@ function setCountOnCommand(command, count) {
     return command;
   }
 
-  const nextCount = Math.max(1, Math.min(102, count));
+  const nextCount = Math.max(1, Math.min(200, count));
   if (/(?:-n|--count)\s+\d+/.test(command)) {
     return command.replace(/(?:-n|--count)\s+\d+/, `-n ${nextCount}`);
   }

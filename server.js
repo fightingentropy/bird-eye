@@ -5,7 +5,8 @@ const os = require('os');
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const BIRD_COMMAND = process.env.BIRD_COMMAND || 'bird';
-const TWEET_COUNT = 102;
+const TWEET_COUNT = 200;
+const TWEET_COUNT_FALLBACK = 102;
 const REQUEST_TIMEOUT_MS = 60000;
 const CODEX_TIMEOUT_MS = 60000;
 const DEFAULT_LIST = '1933193197817135501';
@@ -140,8 +141,8 @@ function parseCommand(rawCommand) {
     if (part === '-n' || part === '--count') {
       const value = parts[i + 1];
       const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 102) {
-        return { error: 'Count must be an integer between 1 and 102.' };
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 200) {
+        return { error: 'Count must be an integer between 1 and 200.' };
       }
       requestedCount = parsed;
       i += 1;
@@ -267,6 +268,15 @@ function setTweetCacheEntry(cacheKey, payload) {
   return cacheByCommand.get(cacheKey) || entry;
 }
 
+function argsWithCount(args, count) {
+  const out = [...args];
+  const idx = out.indexOf('-n');
+  if (idx !== -1 && out[idx + 1] !== undefined) {
+    out[idx + 1] = String(count);
+  }
+  return out;
+}
+
 async function getOrFetchTweetPayload(commandResult, { forceRefresh = false } = {}) {
   const cacheKey = commandResult.display;
   if (!forceRefresh) {
@@ -276,12 +286,28 @@ async function getOrFetchTweetPayload(commandResult, { forceRefresh = false } = 
     }
   }
 
-  const raw = await fetchTweets(commandResult.args);
-  const countOverride =
+  let raw;
+  let countOverride =
     typeof commandResult.requestedCount === 'number'
       ? commandResult.requestedCount
       : TWEET_COUNT;
-  const payload = buildPayload(raw, commandResult.display, countOverride);
+  try {
+    raw = await fetchTweets(commandResult.args);
+  } catch (err) {
+    if (countOverride === TWEET_COUNT && TWEET_COUNT !== TWEET_COUNT_FALLBACK) {
+      const fallbackArgs = argsWithCount(commandResult.args, TWEET_COUNT_FALLBACK);
+      raw = await fetchTweets(fallbackArgs);
+      countOverride = TWEET_COUNT_FALLBACK;
+    } else {
+      throw err;
+    }
+  }
+  const display =
+    countOverride === TWEET_COUNT_FALLBACK &&
+    (commandResult.requestedCount === TWEET_COUNT || commandResult.requestedCount == null)
+      ? commandResult.display.replace(`-n ${TWEET_COUNT}`, `-n ${TWEET_COUNT_FALLBACK}`)
+      : commandResult.display;
+  const payload = buildPayload(raw, display, countOverride);
   return setTweetCacheEntry(cacheKey, payload);
 }
 
