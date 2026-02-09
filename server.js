@@ -183,7 +183,7 @@ async function fetchTweets(commandArgs) {
     stdout = await withTimeout(runBird(args), REQUEST_TIMEOUT_MS, 'bird request timed out.');
   } catch (error) {
     const message = error && error.message ? error.message : '';
-    if (message.includes('Query: Unspecified')) {
+    if (message.includes('Query: Unspecified') || message.includes('Dependency: Unspecified')) {
       await withTimeout(
         refreshBirdQueryIds(),
         REQUEST_TIMEOUT_MS,
